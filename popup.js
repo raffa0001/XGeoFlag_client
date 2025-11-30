@@ -1,11 +1,11 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // --- CONFIGURATION ---
-    const BRIDGE_URL = "https://api.xgeoflag.eu"; // Ensure this points to your live API
+    const BRIDGE_URL = "https://api.xgeoflag.eu";
     const WEBSITE_URL = "https://xgeoflag.eu";
     let timerInterval = null;
     let bountyTimerInterval = null;
     let countryFilters = [];
+    let hiveEnabled = true; // Default
 
     // --- 1. TABS LOGIC ---
     const tabs = document.querySelectorAll('.tab');
@@ -18,18 +18,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             const target = document.getElementById(tab.dataset.target);
             target.classList.remove('hidden');
 
-            if (tab.dataset.target === 'tab-bounties') fetchBounties();
+            if (tab.dataset.target === 'tab-bounties') {
+                if(hiveEnabled) fetchBounties();
+                else document.getElementById('bounties-list').innerHTML = '<div style="text-align:center; padding:20px; color:var(--subtext);">Hive connection is disabled.</div>';
+            }
             if (tab.dataset.target === 'tab-filters') renderSelectedFilters();
+            if (tab.dataset.target === 'tab-account' && !hiveEnabled) {
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('profile-view').classList.add('hidden');
+                // You might want to show a message saying "Connect to Hive to access account"
+            } else if (tab.dataset.target === 'tab-account') {
+                // Trigger normal account view check logic...
+                chrome.storage.local.get(['hiveApiKey'], (d) => {
+                    if(d.hiveApiKey) document.getElementById('profile-view').classList.remove('hidden');
+                    else document.getElementById('login-view').classList.remove('hidden');
+                });
+            }
         });
     });
 
-    // --- 2. DATA LOADING ---
+    // --- 2. DATA LOADING & SETTINGS ---
     try { await userDB.open(); updateCacheStats(); } catch(e){}
 
-    chrome.storage.local.get(['mode', 'requestsUsed', 'firstRequestTime', 'hiveApiKey', 'userBalance', 'pending_credits', 'theme', 'country_filters'], (data) => {
+    chrome.storage.local.get(['mode', 'requestsUsed', 'firstRequestTime', 'hiveApiKey', 'userBalance', 'pending_credits', 'theme', 'country_filters', 'settings_prune', 'settings_hive'], (data) => {
         if (data.theme === 'light') applyTheme(true);
 
         countryFilters = data.country_filters || [];
+
+        // Settings Loading
+        const checkPrune = document.getElementById('checkPrune');
+        const checkHive = document.getElementById('checkHive');
+
+        if (checkPrune) checkPrune.checked = (data.settings_prune !== false); // Default True
+        if (checkHive) {
+            checkHive.checked = (data.settings_hive !== false); // Default True
+            hiveEnabled = checkHive.checked;
+        }
 
         const modeSel = document.getElementById('modeSelect');
         if(modeSel) modeSel.value = data.mode || 'hover';
@@ -37,13 +61,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateQuotaUI(data.requestsUsed, data.firstRequestTime);
         updatePendingUI(data.pending_credits);
 
-        if (data.hiveApiKey && data.hiveApiKey.startsWith('sk_')) {
+        if (hiveEnabled && data.hiveApiKey && data.hiveApiKey.startsWith('sk_')) {
             showProfile(data.hiveApiKey, data.userBalance || 0);
         } else {
             updatePendingUI(data.pending_credits);
         }
     });
 
+    // --- 3. LISTENERS (SETTINGS) ---
+    const checkPrune = document.getElementById('checkPrune');
+    if(checkPrune) {
+        checkPrune.addEventListener('change', (e) => {
+            chrome.storage.local.set({ settings_prune: e.target.checked });
+            notifyContent({ action: "updateSettings", settings: { prune: e.target.checked } });
+        });
+    }
+
+    const checkHive = document.getElementById('checkHive');
+    if(checkHive) {
+        checkHive.addEventListener('change', (e) => {
+            const isEnabled = e.target.checked;
+            hiveEnabled = isEnabled;
+            chrome.storage.local.set({ settings_hive: isEnabled });
+            notifyContent({ action: "updateSettings", settings: { hive: isEnabled } });
+
+            // Reload window to reflect UI changes (Bounties/Account tabs)
+            setTimeout(() => location.reload(), 200);
+        });
+    }
+
+    // --- 4. EXISTING LISTENERS ---
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local') {
             if (changes.requestsUsed || changes.firstRequestTime) {
@@ -57,13 +104,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (changes.country_filters) {
                 countryFilters = changes.country_filters.newValue || [];
                 renderSelectedFilters();
-                notifyContent({ action: "updateFilters", filters: countryFilters });
             }
             if (Object.keys(changes).some(k => k.startsWith('u_'))) updateCacheStats();
         }
     });
-
-    // --- 3. EVENT LISTENERS (UI) ---
 
     const themeBtn = document.getElementById('themeToggle');
     function applyTheme(isLight) {
@@ -92,11 +136,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if(msg) msg.textContent = "";
         });
 
-        tabKey.addEventListener('click', () => {
-            tabKey.classList.add('active'); tabLogin.classList.remove('active');
-            formLogin.classList.add('hidden'); formKey.classList.remove('hidden');
-            if(msg) msg.textContent = "";
-        });
+            tabKey.addEventListener('click', () => {
+                tabKey.classList.add('active'); tabLogin.classList.remove('active');
+                formLogin.classList.add('hidden'); formKey.classList.remove('hidden');
+                if(msg) msg.textContent = "";
+            });
     }
 
     const btnOpenReg = document.getElementById('btnOpenReg');
@@ -125,98 +169,91 @@ document.addEventListener('DOMContentLoaded', async () => {
         if(apiKeyDisplayInput.value) navigator.clipboard.writeText(apiKeyDisplayInput.value);
     });
 
-    const modeSelect = document.getElementById('modeSelect');
-    if(modeSelect) modeSelect.addEventListener('change', (e) => {
-        const newMode = e.target.value;
-        chrome.storage.local.set({ mode: newMode });
-        notifyContent({ action: "updateMode", mode: newMode });
-    });
+        const modeSelect = document.getElementById('modeSelect');
+        if(modeSelect) modeSelect.addEventListener('change', (e) => {
+            const newMode = e.target.value;
+            chrome.storage.local.set({ mode: newMode });
+            notifyContent({ action: "updateMode", mode: newMode });
+        });
 
-    const btnPrune = document.getElementById('btnPrune');
-    if(btnPrune) btnPrune.addEventListener('click', async () => {
-        await userDB.pruneOlderThan(30); updateCacheStats();
-    });
+        const btnPrune = document.getElementById('btnPrune');
+        if(btnPrune) btnPrune.addEventListener('click', async () => {
+            await userDB.pruneOlderThan(30); updateCacheStats();
+        });
 
-    const btnClearAll = document.getElementById('btnClearAll');
-    if(btnClearAll) btnClearAll.addEventListener('click', async () => {
-        if(confirm("Delete ALL cached locations?")) {
-            await userDB.clearAll();
-            updateCacheStats();
-            notifyContent({ action: "clearCache" });
+        const btnClearAll = document.getElementById('btnClearAll');
+        if(btnClearAll) btnClearAll.addEventListener('click', async () => {
+            if(confirm("Delete ALL cached locations?")) {
+                await userDB.clearAll();
+                updateCacheStats();
+                notifyContent({ action: "clearCache" });
+            }
+        });
+
+        const filterSearchInput = document.getElementById('filterSearchInput');
+        if(filterSearchInput) {
+            filterSearchInput.addEventListener('input', () => {
+                const searchTerm = filterSearchInput.value.toLowerCase();
+                if (searchTerm.length === 0) {
+                    renderFilterResults([]);
+                    return;
+                }
+                const results = RAW_COUNTRY_DATA.filter(c => c.country.toLowerCase().includes(searchTerm)).slice(0, 50);
+                renderFilterResults(results);
+            });
         }
-    });
 
-    const filterSearchInput = document.getElementById('filterSearchInput');
-    if(filterSearchInput) {
-        filterSearchInput.addEventListener('input', () => {
-            const searchTerm = filterSearchInput.value.toLowerCase();
-            if (searchTerm.length === 0) {
-                renderFilterResults([]);
+        // --- FILTERS & REST ---
+        function renderSelectedFilters() {
+            const container = document.getElementById('selectedFilters');
+            if (!container) return;
+            if (countryFilters.length === 0) {
+                container.innerHTML = '<div class="small-text">No active filters.</div>';
                 return;
             }
-            // RAW_COUNTRY_DATA is from countries-data.js
-            const results = RAW_COUNTRY_DATA.filter(c => c.country.toLowerCase().includes(searchTerm)).slice(0, 50);
-            renderFilterResults(results);
-        });
-    }
-
-    // --- 4. FILTERS LOGIC ---
-    function renderSelectedFilters() {
-        const container = document.getElementById('selectedFilters');
-        if (!container) return;
-
-        if (countryFilters.length === 0) {
-            container.innerHTML = '<div class="small-text">No active filters.</div>';
-            return;
+            container.innerHTML = '';
+            countryFilters.forEach(isoCode => {
+                const countryData = RAW_COUNTRY_DATA.find(c => c.isoCode === isoCode);
+                if (!countryData) return;
+                const filterTag = document.createElement('div');
+                filterTag.className = 'filter-item';
+                filterTag.textContent = `${countryData.emojiFlag} ${countryData.country}`;
+                filterTag.title = 'Click to remove';
+                filterTag.addEventListener('click', () => removeFilter(isoCode));
+                container.appendChild(filterTag);
+            });
         }
 
-        container.innerHTML = '';
-        countryFilters.forEach(isoCode => {
-            const countryData = RAW_COUNTRY_DATA.find(c => c.isoCode === isoCode);
-            if (!countryData) return;
+        function addFilter(isoCode) {
+            if (!countryFilters.includes(isoCode)) {
+                countryFilters.push(isoCode);
+                chrome.storage.local.set({ country_filters: countryFilters });
+            }
+            filterSearchInput.value = '';
+            renderFilterResults([]);
+        }
 
-            const filterTag = document.createElement('div');
-            filterTag.className = 'filter-item';
-            filterTag.textContent = `${countryData.emojiFlag} ${countryData.country}`;
-            filterTag.title = 'Click to remove';
-            filterTag.addEventListener('click', () => removeFilter(isoCode));
-            container.appendChild(filterTag);
-        });
-    }
-
-    function addFilter(isoCode) {
-        if (!countryFilters.includes(isoCode)) {
-            countryFilters.push(isoCode);
+        function removeFilter(isoCode) {
+            countryFilters = countryFilters.filter(c => c !== isoCode);
             chrome.storage.local.set({ country_filters: countryFilters });
         }
-        filterSearchInput.value = '';
-        renderFilterResults([]);
-    }
 
-    function removeFilter(isoCode) {
-        countryFilters = countryFilters.filter(c => c !== isoCode);
-        chrome.storage.local.set({ country_filters: countryFilters });
-    }
+        function renderFilterResults(results) {
+            const container = document.getElementById('filterSearchResults');
+            if (!container) return;
+            container.innerHTML = '';
+            results.forEach(countryData => {
+                const resultEl = document.createElement('div');
+                resultEl.className = 'filter-search-result';
+                resultEl.innerHTML = `<span class="flag">${countryData.emojiFlag}</span> <span>${countryData.country}</span>`;
+                resultEl.addEventListener('click', () => addFilter(countryData.isoCode));
+                container.appendChild(resultEl);
+            });
+        }
 
-    function renderFilterResults(results) {
-        const container = document.getElementById('filterSearchResults');
-        if (!container) return;
-        container.innerHTML = '';
-
-        results.forEach(countryData => {
-            const resultEl = document.createElement('div');
-            resultEl.className = 'filter-search-result';
-            resultEl.innerHTML = `<span class="flag">${countryData.emojiFlag}</span> <span>${countryData.country}</span>`;
-            resultEl.addEventListener('click', () => addFilter(countryData.isoCode));
-            container.appendChild(resultEl);
-        });
-    }
-
-    // --- 5. BOUNTIES & CACHING LOGIC ---
-    
         // Helper: Get list of bounties visited TODAY
         async function getVisitedBounties() {
-            const today = new Date().toDateString(); // e.g. "Sat Nov 29 2025"
+            const today = new Date().toDateString();
             const d = await chrome.storage.local.get(['daily_visited']);
             if (d.daily_visited && d.daily_visited.date === today) {
                 return d.daily_visited.hashes || [];
@@ -224,7 +261,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             return [];
         }
 
-        // Helper: Mark a hash as visited today
         async function markBountyVisited(hash) {
             const today = new Date().toDateString();
             const d = await chrome.storage.local.get(['daily_visited']);
@@ -237,20 +273,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         async function fetchBounties() {
+            if (!hiveEnabled) return;
+
             const list = document.getElementById('bounties-list');
             if(!list) return;
 
-            // 1. CHECK CACHE
             const cache = await chrome.storage.local.get(['bounty_cache']);
             const now = Date.now();
             let data = [];
 
-            // If cache exists and the earliest nextFetch time hasn't passed
             if (cache.bounty_cache && cache.bounty_cache.nextFetch > now) {
                 console.log("Using Cached Bounties");
                 data = cache.bounty_cache.items;
             } else {
-                // Fetch New
                 try {
                     list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--subtext);">Scanning network...</div>';
                     const res = await fetch(`${BRIDGE_URL}/v1/bounties/active`, {
@@ -260,13 +295,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (!res.ok) throw new Error("Network Error");
                     data = await res.json();
 
-                    // Determine next fetch time.
-                    // If bounties exist, fetch again when the earliest one ends (plus buffer).
-                    // If no bounties, wait 5 minutes.
                     let nextTime = now + (5 * 60 * 1000);
                     if (data.length > 0) {
                         const minEnd = Math.min(...data.map(b => b.endTime));
-                        // Don't fetch until the first one expires
                         nextTime = Math.max(now + 10000, minEnd);
                     }
 
@@ -278,7 +309,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     return;
                 }
             }
-
             renderBounties(data);
         }
 
@@ -287,7 +317,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (bountyTimerInterval) clearInterval(bountyTimerInterval);
 
             const visited = await getVisitedBounties();
-            // Filter out bounties we've already clicked/visited today
             const filtered = data.filter(b => !visited.includes(b.hash));
 
             list.innerHTML = "";
@@ -308,26 +337,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="b-reward" style="${b.bounty > 20 ? 'background:rgba(255,0,0,0.15); color:#ff4444;' : ''}">+${b.bounty || 20} CR</span>
                 </div>
                 `;
-
-                // Mark as visited when clicked
                 const link = div.querySelector('a');
                 link.addEventListener('click', () => {
                     markBountyVisited(b.hash);
                     div.style.opacity = '0.5';
                 });
-
                 list.appendChild(div);
             });
 
-            // Start Countdown Loop
             bountyTimerInterval = setInterval(() => {
                 const now = Date.now();
                 document.querySelectorAll('.timer-text').forEach(t => {
                     const end = parseInt(t.dataset.end);
-                    if (isNaN(end)) {
-                        t.textContent = "Processing...";
-                        return;
-                    }
+                    if (isNaN(end)) { t.textContent = "Processing..."; return; }
                     const diff = end - now;
                     if (diff <= 0) {
                         t.textContent = "Processing...";
@@ -337,16 +359,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                         const seconds = Math.floor((diff % (1000 * 60)) / 1000);
                         t.textContent = `Ends in ${hours}h ${minutes}m ${seconds}s`;
-                        // Red color if less than 1 min
                         if (diff < 60000) t.style.color = "var(--danger)";
                     }
                 });
             }, 1000);
         }
 
-        // --- 6. QUOTA UI ---
         function updateQuotaUI(used, startTime) {
-            const MAX_QUOTA = 50; // Make sure this matches your content.js config
+            const MAX_QUOTA = 2;
             const val = Math.max(0, MAX_QUOTA - (used || 0));
             const display = document.getElementById('quotaDisplay');
             if(display) display.textContent = val;
@@ -361,7 +381,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 timerInterval = setInterval(() => {
                     const now = Date.now();
                     const diff = resetTime - now;
-
                     if (diff <= 0) {
                         clearInterval(timerInterval);
                         timerEl.textContent = "Resets every 15 minutes.";
@@ -379,9 +398,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // --- 7. AUTH ACTIONS ---
-
         function performAuth() {
+            if(!hiveEnabled) return alert("Hive connection is disabled.");
             const email = document.getElementById('authEmail').value.trim();
             const pass = document.getElementById('authPass').value.trim();
             if(!email || !pass) return msg.textContent = "Please fill all fields";
@@ -402,6 +420,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         function validateKey() {
+            if(!hiveEnabled) return alert("Hive connection is disabled.");
             const key = document.getElementById('manualKeyInput').value.trim();
             if(!key.startsWith('sk_')) return msg.textContent = "Key must start with 'sk_'";
             msg.textContent = "Verifying...";
@@ -432,7 +451,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pending = val || 0;
             const banner = document.getElementById('pendingBanner');
             const loginView = document.getElementById('login-view');
-
             if (banner && pending > 0 && loginView && !loginView.classList.contains('hidden')) {
                 banner.classList.remove('hidden');
                 const pVal = document.getElementById('pendingVal');

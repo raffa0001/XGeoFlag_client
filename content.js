@@ -20,33 +20,46 @@ let visibilityObserver = null;
 let activeBounties = [];
 
 let hiveApiKey = null;
-let contributeData = true;
+let contributeData = true; // Still used, but overridden by master switch below
 let countryFilters = [];
+
+// NEW SETTINGS
+let autoPruneEnabled = true;
+let hiveServerEnabled = true; // "Opt-Out" switch
 
 // ============================================================
 // 2. INITIALIZATION
 // ============================================================
 
 async function init() {
+    // Load Settings First
+    const result = await new Promise(r => chrome.storage.local.get(['mode', 'hiveApiKey', 'contributeData', 'active_bounties', 'country_filters', 'x_remote_config', 'settings_prune', 'settings_hive'], r));
+
+    currentMode = result.mode || 'hover';
+    hiveApiKey = result.hiveApiKey || null;
+    contributeData = result.contributeData !== undefined ? result.contributeData : true;
+    activeBounties = result.active_bounties || [];
+    countryFilters = result.country_filters || [];
+
+    // NEW FLAGS
+    autoPruneEnabled = result.settings_prune !== false; // Default true
+    hiveServerEnabled = result.settings_hive !== false; // Default true
+
+    if (result.x_remote_config) {
+        QUERY_ID = result.x_remote_config.queryId;
+        BEARER_TOKEN = result.x_remote_config.bearerToken;
+    }
+
     try {
         await userDB.open();
-        await userDB.pruneOlderThan(30);
+        // ONLY PRUNE IF ENABLED
+        if (autoPruneEnabled) {
+            await userDB.pruneOlderThan(30);
+        }
     } catch(e) { console.error("DB Init Error", e); }
 
-    chrome.storage.local.get(['mode', 'hiveApiKey', 'contributeData', 'active_bounties', 'country_filters', 'x_remote_config'], (result) => {
-        currentMode = result.mode || 'hover';
-        hiveApiKey = result.hiveApiKey || null;
-        contributeData = result.contributeData !== undefined ? result.contributeData : true;
-        activeBounties = result.active_bounties || [];
-        countryFilters = result.country_filters || [];
-
-        if (result.x_remote_config) {
-            QUERY_ID = result.x_remote_config.queryId;
-            BEARER_TOKEN = result.x_remote_config.bearerToken;
-        }
-        applyModeSettings();
-        scanPage();
-    });
+    applyModeSettings();
+    scanPage();
 
     chrome.runtime.onMessage.addListener((request) => {
         if (request.action === "updateMode") {
@@ -66,6 +79,11 @@ async function init() {
         if (request.action === "updateFilters") {
             countryFilters = request.filters || [];
             resetScanner();
+        }
+        // HANDLE NEW SETTINGS HOT-SWAP
+        if (request.action === "updateSettings") {
+            if (request.settings.prune !== undefined) autoPruneEnabled = request.settings.prune;
+            if (request.settings.hive !== undefined) hiveServerEnabled = request.settings.hive;
         }
     });
 
@@ -98,13 +116,18 @@ function applyModeSettings() {
                     const screenName = el.dataset.flagScreenname;
                     if (screenName && el.dataset.flagStatus === "pending") {
                         el.dataset.flagStatus = "queued";
-                        addToQueue(screenName, el);
-                        visibilityObserver.unobserve(el);
+                        addToQueue(screenName, el); // (Implied function, assuming it exists in your full code)
+            visibilityObserver.unobserve(el);
                     }
                 }
             });
         }, { rootMargin: "100px" });
     }
+}
+
+// (Helper for auto mode since addToQueue was missing in snippet)
+function addToQueue(screenName, article) {
+    processSingleRequest(screenName);
 }
 
 function scanPage() {
@@ -153,13 +176,11 @@ function updateAllInstances(screenName, countryData) {
 
     const targets = document.querySelectorAll(`article[data-flag-screenname="${screenName}"]`);
 
-    // If the country is in the filter list, remove the entire article.
     if (countryFilters.length > 0 && countryFilters.includes(countryData.code)) {
         targets.forEach(article => article.remove());
-        return; // Done.
+        return;
     }
 
-    // Otherwise, proceed to inject the flag as normal.
     targets.forEach(article => {
         if (article.dataset.flagStatus === "done") return;
         const container = findInjectionTarget(article);
@@ -213,7 +234,6 @@ function setupInteraction(article, container, screenName) {
 // ============================================================
 
 async function fetchUserSmart(screenName) {
-    // Uses hashUsername from crypto.js (loaded in manifest)
     const fullHash = await hashUsername(screenName);
     const userHash = fullHash.substring(0, 16);
 
@@ -230,7 +250,8 @@ async function fetchUserSmart(screenName) {
             const { data: xData, restId } = xResult;
 
             if (xData && xData.code !== "UNK" && restId) {
-                if (contributeData || isBounty) {
+                // OPT-OUT LOGIC: Only upload if Hive Server is Enabled
+                if (hiveServerEnabled && (contributeData || isBounty)) {
                     uploadToBridge(userHash, xData.code, restId, screenName);
                 }
             }
@@ -241,7 +262,8 @@ async function fetchUserSmart(screenName) {
     }
 
     // --- PHASE B: BRIDGE (PAID) ---
-    if (hiveApiKey && hiveApiKey.startsWith('sk_')) {
+    // OPT-OUT LOGIC: Skip bridge check if Hive is disabled
+    if (hiveServerEnabled && hiveApiKey && hiveApiKey.startsWith('sk_')) {
         try {
             const bridgeData = await proxyGetRequest(`/v1/flag/${userHash}`);
 
@@ -361,22 +383,15 @@ async function checkAndConsumeQuota() {
             const now = Date.now();
             let used = d.requestsUsed || 0;
 
-            // 1. Check for Reset FIRST
             if (now - (d.firstRequestTime || 0) > RESET_TIME_MS) {
                 used = 0;
-                // Important: We don't await this set, but we use local var 'used' for logic below
                 chrome.storage.local.set({ requestsUsed: 0, firstRequestTime: now });
             }
 
-            // 2. Check Limit
             if (used >= MAX_X_QUOTA) {
                 resolve(false);
             } else {
-                // 3. Increment & Save
-                // We increment the local variable first to ensure logic consistency
                 const newUsed = used + 1;
-
-                // If this was the first request, set the timer
                 const newTime = (used === 0) ? now : (d.firstRequestTime || now);
 
                 chrome.storage.local.set({
@@ -384,10 +399,8 @@ async function checkAndConsumeQuota() {
                     firstRequestTime: newTime
                 }, () => {
                     if (chrome.runtime.lastError) {
-                        // Context was invalidated, do nothing.
                         return;
                     }
-                    // Only resolve true AFTER storage is confirmed saved
                     resolve(true);
                 });
             }
