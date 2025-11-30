@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hive Mind // Conflict Zone</title>
+    <style>
+        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #00ff88; --card: #111; --border: #222; }
+        body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; padding: 2rem; max-width: 800px; margin: 0 auto; }
+        h1 { color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+
+        .bounty-card {
+            background: var(--card); border: 1px solid var(--border); padding: 15px; margin-bottom: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .bounty-card:hover { border-color: var(--accent); }
+
+        .hash { color: #666; font-size: 0.9em; }
+        .conflict-box { display: flex; gap: 10px; }
+        .option { background: #222; padding: 5px 10px; border-radius: 4px; }
+        .vote-count { color: var(--accent); font-weight: bold; margin-left: 5px; }
+
+        .status { color: #ff4444; font-weight: bold; font-size: 0.8em; text-transform: uppercase; }
+        .loader { text-align: center; margin-top: 50px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <h1>⚔️ ACTIVE CONFLICTS</h1>
+    <p>Verify these users to earn 20 Credits (4x Normal Reward).</p>
+
+    <div id="list">
+        <div class="loader">Scanning Network...</div>
+    </div>
+
+    <script>
+        // Change this to your actual API domain
+        const API = "https://api.xgeoflag.eu/v1/bounties/active";
+
+        async function load() {
+            try {
+                const res = await fetch(API);
+                const data = await res.json();
+                const container = document.getElementById('list');
+                container.innerHTML = "";
+
+                if(data.length === 0) {
+                    container.innerHTML = "<div class='loader'>No active conflicts. The Hive is in consensus.</div>";
+                    return;
+                }
+
+                data.forEach(item => {
+                    // Create Vote Blocks (e.g. US: 2, UK: 1)
+                    let votesHtml = "";
+                    for(const [opt, count] of Object.entries(item.votes || {})) {
+                        votesHtml += `<div class="option">${opt}<span class="vote-count">${count}</span></div>`;
+                    }
+
+                    const div = document.createElement('div');
+                    div.className = 'bounty-card';
+                    div.innerHTML = `
+                        <div>
+                            <div class="status">Conflict Detected</div>
+                            <div class="hash">ID: ${item.hash.substring(0, 12)}...</div>
+                        </div>
+                        <div class="conflict-box">
+                            ${votesHtml}
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch(e) {
+                document.getElementById('list').innerHTML = "<div class='loader' style='color:red'>Connection Failed</div>";
+            }
+        }
+
+        load();
+        setInterval(load, 10000); // Refresh every 10s
+    </script>
+</body>
+</html>

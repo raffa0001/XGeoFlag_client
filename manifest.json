@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "X GeoFlag",
+  "version": "3.1",
+  "description": "Decentralized Flag Identifier for X.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://api.xgeoflag.eu/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["countries-data.js", "countries.js", "database.js", "crypto.js", "content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

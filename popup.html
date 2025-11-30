@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --bg: #000000;
+      --text: #e7e9ea;
+      --card-bg: #16181c;
+      --card-border: #2f3336;
+      --subtext: #71767b;
+      --accent: #1d9bf0;
+      --danger: #f4212e;
+      --success: #00ba7c;
+      --warn-bg: rgba(255, 212, 0, 0.1);
+      --warn-text: #ffd400;
+    }
+
+    /* Light Mode Support */
+    body.light-mode {
+      --bg: #ffffff;
+      --text: #0f1419;
+      --card-bg: #f7f9f9;
+      --card-border: #eff3f4;
+      --subtext: #536471;
+    }
+
+    body { width: 340px; padding: 0; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); transition: background 0.3s, color 0.3s; }
+
+    /* Header */
+    .header { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-bottom: 1px solid var(--card-border); }
+    h3 { margin: 0; font-size: 16px; font-weight: 800; }
+    .theme-btn {
+        position: absolute;
+        top: 4px;
+        right: 10px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        width: 30px; /* Reduced size */
+        height: 30px; /* Reduced size */
+        display: flex; /* Center content */
+        justify-content: center; /* Center content */
+        align-items: center; /* Center content */
+        border-radius: 50%;
+        color: var(--text);
+        z-index: 10;
+    }
+    .theme-btn:hover { background: rgba(128,128,128,0.2); }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--card-border); background: rgba(128,128,128,0.05); }
+    .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-size: 13px; font-weight: bold; color: var(--subtext); border-bottom: 3px solid transparent; }
+    .tab:hover { background: rgba(128,128,128,0.1); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .content-area { padding: 15px; }
+    .card { background: var(--card-bg); padding: 12px; border-radius: 12px; border: 1px solid var(--card-border); margin-bottom: 10px; }
+
+    /* Inputs & Buttons */
+    input { background: var(--bg); border: 1px solid var(--card-border); color: var(--text); padding: 10px; border-radius: 4px; width: 92%; font-size: 13px; margin-bottom: 8px; }
+    button { width: 100%; padding: 10px; border-radius: 20px; border: none; font-weight: bold; cursor: pointer; font-size: 13px; margin-top: 5px; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #1a8cd8; }
+    .btn-sec { background: transparent; color: var(--text); border: 1px solid var(--card-border); }
+    .btn-sec:hover { background: rgba(128,128,128,0.1); }
+    .btn-danger { background: rgba(244, 33, 46, 0.1); color: var(--danger); }
+    .btn-danger:hover { background: rgba(244, 33, 46, 0.2); }
+    .btn-icon { width: auto; background: none; border: none; cursor: pointer; color: var(--subtext); padding: 5px; }
+    .btn-icon:hover { color: var(--text); }
+
+    /* Utils */
+    .hidden { display: none !important; }
+    .small-text { font-size: 11px; color: var(--subtext); line-height: 1.4; }
+    .stat-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .stat-val { font-size: 18px; font-weight: bold; color: var(--accent); }
+    .error-msg { color: var(--danger); font-size: 12px; text-align: center; margin-top: 8px; min-height: 15px; }
+
+    /* Pending Banner (Hero Style) */
+    .pending-hero { background: linear-gradient(45deg, var(--warn-bg), rgba(255,185,0,0.2)); border: 1px solid var(--warn-text); color: var(--warn-text); padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 20px; animation: pulseGlow 2s infinite; }
+    .pending-val { font-size: 24px; font-weight: 900; display: block; margin: 5px 0; color: #fff; }
+    @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(255, 212, 0, 0.2); } 70% { box-shadow: 0 0 0 6px rgba(255, 212, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 212, 0, 0); } }
+
+    /* Auth Toggle */
+    .auth-method-toggle { display: flex; gap: 10px; margin-bottom: 15px; font-size: 12px; justify-content: center; }
+    .auth-link { color: var(--subtext); cursor: pointer; text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 4px; }
+    .auth-link.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: bold; }
+
+    /* Bounties List */
+    .bounty-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--card-border); }
+    .bounty-item:last-child { border-bottom: none; }
+    .b-name { font-weight: bold; color: var(--text); text-decoration: none; }
+    .b-name:hover { text-decoration: underline; color: var(--accent); }
+    .b-reward { color: var(--warn-text); font-size: 11px; font-weight: bold; background: rgba(255,185,0,0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,185,0,0.2); }
+
+    /* Filters Page */
+    .filter-item { display: inline-flex; align-items: center; background: var(--accent); color: var(--bg); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin: 2px; cursor: pointer; }
+    .filter-item:hover { opacity: 0.8; }
+    .filter-search-result { display: flex; align-items: center; padding: 8px; cursor: pointer; border-radius: 4px; }
+    .filter-search-result:hover { background: var(--card-bg); }
+    .filter-search-result .flag { font-size: 16px; margin-right: 8px; }
+    #filterSearchInput { padding-top: 8px; padding-bottom: 8px; box-sizing: border-box; } /* 20% reduction from 10px */
+  </style>
+</head>
+<body>
+
+  <button id="themeToggle" class="theme-btn">☀️</button>
+
+  <div class="header">
+    <h3>X GeoFlag</h3>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-target="tab-status">Status</div>
+    <div class="tab" data-target="tab-bounties">Bounties</div>
+    <div class="tab" data-target="tab-filters">Filters</div>
+    <div class="tab" data-target="tab-account">Account</div>
+  </div>
+
+  <div class="content-area">
+
+    <!-- ================= STATUS TAB ================= -->
+    <div id="tab-status">
+
+      <!-- Quota -->
+      <div class="card">
+        <div class="stat-row">
+          <span style="font-size:13px;">Free Quota</span>
+          <span id="quotaDisplay" class="stat-val">--</span>
+        </div>
+        <!-- VITAL: This ID must exist for the JS to work -->
+        <div class="small-text" id="quotaTimer">Resets every 15 minutes.</div>
+      </div>
+
+      <!-- Cache -->
+      <div class="card">
+        <div class="stat-row">
+          <span style="font-size:13px;">Cached Users</span>
+          <span id="cacheCount" class="stat-val">0</span>
+        </div>
+        <div style="display:flex; gap:5px;">
+            <button id="btnPrune" class="btn-sec" style="font-size:10px; padding:6px;">Prune Old</button>
+            <button id="btnClearAll" class="btn-danger" style="font-size:10px; padding:6px;">Clear All</button>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="card">
+        <div class="stat-row">
+          <span style="font-size:13px;">Scan Mode</span>
+          <select id="modeSelect" style="background:var(--bg); color:var(--text); border:1px solid var(--card-border); padding:4px; border-radius:4px;">
+            <option value="hover">Hover</option>
+            <option value="auto">Auto</option>
+            <option value="manual">Manual</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= BOUNTIES TAB ================= -->
+    <div id="tab-bounties" class="hidden">
+        <div class="card" id="bounties-list">
+            <div style="text-align:center; padding:20px; color:var(--subtext); font-size:12px;">Scanning network...</div>
+        </div>
+        <div style="text-align:center; font-size:11px; color:var(--subtext); margin-top:10px;">
+            Visit these profiles to resolve conflicts and earn extra credits.
+        </div>
+    </div>
+
+    <!-- ================= FILTERS TAB ================= -->
+    <div id="tab-filters" class="hidden">
+        <div class="card">
+            <div style="font-size:13px; margin-bottom: 8px;">Active Filters</div>
+            <div id="selectedFilters" class="small-text">No active filters.</div>
+        </div>
+        <div class="card">
+            <input type="text" id="filterSearchInput" placeholder="Search for a country..." style="width: 100%;">
+            <div id="filterSearchResults" style="max-height: 150px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <!-- ================= ACCOUNT TAB ================= -->
+    <div id="tab-account" class="hidden">
+
+      <!-- View: Not Logged In -->
+      <div id="login-view">
+
+        <!-- Pending Credits Hero Banner -->
+        <div id="pendingBanner" class="pending-hero hidden">
+          <div>YOU HAVE EARNED</div>
+          <span id="pendingVal" class="pending-val">0</span>
+          <div>CREDITS</div>
+          <div style="font-size:11px; margin-top:5px; opacity:0.8;">Create an account to save them!</div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:bold; margin-bottom:10px; font-size:15px; text-align:center;">Operator Login</div>
+
+          <!-- Method Toggle -->
+          <div class="auth-method-toggle">
+              <div id="tabMethodLogin" class="auth-link active">Login</div>
+              <div id="tabMethodKey" class="auth-link">API Key</div>
+          </div>
+
+          <!-- Option A: Login Form -->
+          <div id="formLogin">
+              <input type="email" id="authEmail" placeholder="Email Address">
+              <input type="password" id="authPass" placeholder="Password">
+              <button id="btnLogin" class="btn-primary">Login & Sync</button>
+
+              <div style="margin-top:15px; text-align:center; font-size:12px; color:var(--subtext);">
+                  New Operator?
+                  <button id="btnOpenReg" class="btn-sec" style="margin-top:5px;">Create Account on Website</button>
+              </div>
+          </div>
+
+          <!-- Option B: Key Form -->
+          <div id="formKey" class="hidden">
+              <div class="small-text" style="margin-bottom:10px;">Paste your key starting with <code>sk_</code></div>
+              <input type="password" id="manualKeyInput" placeholder="sk_...">
+              <button id="btnSaveKey" class="btn-primary">Validate Key</button>
+          </div>
+
+          <div id="authMsg" class="error-msg"></div>
+        </div>
+      </div>
+
+      <!-- View: Logged In -->
+      <div id="profile-view" class="hidden">
+        <div class="card">
+          <div class="stat-row">
+            <span>Balance</span>
+            <span id="userBal" class="stat-val">0</span>
+          </div>
+          <div class="small-text">Credits available for bridge lookups.</div>
+        </div>
+
+        <div class="card">
+          <div style="font-size:12px; font-weight:bold; color:var(--subtext); display:flex; justify-content:space-between; align-items:center;">
+              <span>YOUR API KEY</span>
+              <button id="toggleKeyBtn" class="btn-icon" style="padding:0; width:20px;">👁️</button>
+          </div>
+
+          <div style="position:relative; margin-top:8px;">
+              <input type="password" id="apiKeyDisplayInput" readonly
+                     style="background:#000; border:1px solid #333; color:var(--accent); font-family:monospace; padding-right:35px; width:100%; box-sizing:border-box;">
+
+              <button id="copyKeyBtn" style="position:absolute; right:4px; top:4px; bottom:4px; width:25px; padding:0; background:transparent; border:none; color:#fff; cursor:pointer;" title="Copy">
+                  📋
+              </button>
+          </div>
+        </div>
+
+        <button id="btnLogout" class="btn-danger">Logout</button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="database.js"></script>
+  <script src="countries-data.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
